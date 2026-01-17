@@ -1,11 +1,59 @@
 import streamlit as st
 import os
 import PyPDF2
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain_community.vectorstores import FAISS
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain.chains import RetrievalQA
-from langchain.prompts import PromptTemplate
+
+# Try different import paths for LangChain compatibility
+try:
+    from langchain_text_splitters import RecursiveCharacterTextSplitter
+    from langchain_community.vectorstores import FAISS
+    from langchain.chains import RetrievalQA
+    from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+    from langchain.prompts import PromptTemplate
+except ImportError:
+    try:
+        from langchain.text_splitter import RecursiveCharacterTextSplitter
+        from langchain_community.vectorstores import FAISS
+        from langchain.chains import RetrievalQA
+        from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+        from langchain.prompts import PromptTemplate
+    except ImportError:
+        # If all else fails, use basic imports
+        from langchain_community.vectorstores import FAISS
+        from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+        from langchain.prompts import PromptTemplate
+        
+        # Create simple text splitter
+        class RecursiveCharacterTextSplitter:
+            def __init__(self, chunk_size=1000, chunk_overlap=200):
+                self.chunk_size = chunk_size
+                self.chunk_overlap = chunk_overlap
+            
+            def split_text(self, text):
+                chunks = []
+                start = 0
+                while start < len(text):
+                    end = start + self.chunk_size
+                    chunks.append(text[start:end])
+                    start = end - self.chunk_overlap
+                return chunks
+        
+        # Create simple RetrievalQA
+        class RetrievalQA:
+            @staticmethod
+            def from_chain_type(llm, chain_type, retriever, chain_type_kwargs, return_source_documents=False):
+                class SimpleQA:
+                    def __init__(self, llm, retriever, prompt):
+                        self.llm = llm
+                        self.retriever = retriever
+                        self.prompt = prompt
+                    
+                    def __call__(self, inputs):
+                        docs = self.retriever.get_relevant_documents(inputs["query"])
+                        context = "\n\n".join([doc.page_content for doc in docs])
+                        formatted_prompt = self.prompt.format(context=context, question=inputs["query"])
+                        response = self.llm.invoke(formatted_prompt)
+                        return {"result": response.content}
+                return SimpleQA(llm, retriever, chain_type_kwargs["prompt"])
 
 st.set_page_config(page_title="GenAI RAG Analyst", page_icon="🤖", layout="wide")
 
