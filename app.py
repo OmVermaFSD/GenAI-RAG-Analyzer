@@ -53,10 +53,18 @@ def get_pdf_text(uploaded_file):
         return None
     return text
 
+def list_models(api_key):
+    try:
+        genai.configure(api_key=api_key)
+        for m in genai.list_models():
+            print(f"Model Name: {m.name}, Supported Methods: {m.supported_generation_methods}")
+    except Exception as e:
+        print(f"Error listing models: {str(e)}")
+
 def get_expert_response(context, question, api_key):
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-1.5-pro')
+        model = genai.GenerativeModel('models/gemini-pro')
         
         prompt = f"""
         You are an Expert Strategy Consultant. Answer based ONLY on the Context below.
@@ -79,9 +87,13 @@ with st.sidebar:
     if "GOOGLE_API_KEY" in st.secrets:
         api_key = st.secrets["GOOGLE_API_KEY"]
         st.markdown('<span class="status-ok">✅ API Key Loaded</span>', unsafe_allow_html=True)
+        # List available models for debugging
+        list_models(api_key)
     elif os.getenv("GOOGLE_API_KEY"):
         api_key = os.getenv("GOOGLE_API_KEY")
         st.markdown('<span class="status-ok">✅ API Key Loaded</span>', unsafe_allow_html=True)
+        # List available models for debugging
+        list_models(api_key)
     else:
         api_key = st.text_input("Enter Gemini API Key", type="password")
         if not api_key: st.markdown('<span class="status-err">🔴 Waiting for Key</span>', unsafe_allow_html=True)
