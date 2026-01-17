@@ -1,91 +1,98 @@
-streamlit as st
+import streamlit as st
 import os
-import 
-st.set_page_config(
-    page_title="et An",
-    page_icon="",
-    layout="wide"
-)
 
+# --- CONFIGURATION ---
+st.set_page_config(page_title="Legal Insight AI", page_icon="⚖️", layout="wide")
+
+# --- EXACT IMPORTS (Matched to locked requirements) ---
+from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import FAISS
+from langchain_community.chains import RetrievalQA
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain.prompts import PromptTemplate
+import PyPDF2
+
+# --- UI STYLING ---
 st.markdown("""
 <style>
-    .main-header {ont-size: 2.5rem; color: #1f2; margin-ottom: 1rem;}
-    .sub-text {color: #6b78;font-size: 1.1re; m}
-    .dislimer {ont-size: 0.8rem; color: #9ca3af; margin-top: re; padding-top: 1e; border: 1px solid #ee;}
+    .main-header {font-size: 2.5rem; color: #1e293b; font-family: 'Helvetica Neue', sans-serif; font-weight: 800;}
+    .sub-header {color: #64748b; font-size: 1.1rem; margin-bottom: 2rem;}
+    .success-box {padding: 1rem; background-color: #f0fdf4; border-left: 5px solid #22c55e; color: #166534;}
+    .error-box {padding: 1rem; background-color: #fef2f2; border-left: 5px solid #ef4444; color: #991b1b;}
 </style>
-""",unsfe_allow_html=True)
+""", unsafe_allow_html=True)
 
+# --- LOGIC ---
 def get_pdf_text(uploaded_file):
     text = ""
     try:
         reader = PyPDF2.PdfReader(uploaded_file)
-        for page in reader.page:
-           txt+= page.extract_text() or ""
-    except Exception a e:
-        s return None
+        for page in reader.pages:
+            text += page.extract_text() or ""
+    except Exception:
+        return None
     return text
 
-def speet_ste, questionl = tleenertie(el"geminipro teemraure, olaieaie
-    
-     ei omt    temlat
-       ae  enor  ayt n terovie ntratdocument contet tcl.
-        es:
-     e  specificaes r etins if aille
-     ilit tetl rss in o
-      t ases t he document state: "Not found in th oet."
-     inain n esionloe
-        ntext ontext
-    uetion usetion    
-    ls:
-          rotematlaeee intiesonte =teloit(
-        lm cainpestf reteeectosoaseter,
-        es:
-         returnhirun(estient."
+def get_legal_response(vector_store, question, api_key):
+    llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.3, google_api_key=api_key)
+    template = """
+    You are a Senior Legal Analyst. Answer based on the context.
+    If not found, say "Not found in document."
+    Context: {context}
+    Question: {question}
+    Analysis:
+    """
+    prompt = PromptTemplate(template=template, input_variables=["context", "question"])
+    chain = RetrievalQA.from_chain_type(
+        llm=llm, chain_type="stuff", retriever=vector_store.as_retriever(),
+        chain_type_kwargs={"prompt": prompt}
+    )
+    return chain.run(question)
 
-with st.sidbar:
-    stitle(ues")
-    t.info("Sil oental\no P e eui")
-    s.rets"
-    st.rdo"-  e etn")
-    akon("-Ks")
-    t.("-entsa")
-    st.n("-  eteas")
+# --- SIDEBAR & MAIN ---
+with st.sidebar:
+    st.header("🔐 Secure Access")
+    if "GOOGLE_API_KEY" in st.secrets:
+        api_key = st.secrets["GOOGLE_API_KEY"]
+        st.success("Credentials Authenticated")
+    elif os.getenv("GOOGLE_API_KEY"):
+        api_key = os.getenv("GOOGLE_API_KEY")
+        st.success("Credentials Authenticated")
+    else:
+        api_key = st.text_input("Enter API Key", type="password")
 
-st.markdown('<div class="main-header">Document Analy</div>', unsafe_allow_html=True)
-st.markdown('<p class="sub-text">Upload  ments for instt anass and e extraction.</p>', unsafe_allow_html=True)
+st.markdown('<div class="main-header">Legal Insight AI ⚖️</div>', unsafe_allow_html=True)
+st.markdown('<div class="sub-header">Automated Contract Review & Risk Analysis System</div>', unsafe_allow_html=True)
 
 if "messages" not in st.session_state:
     st.session_state.messages = []
-if "et_te" not in st.session_state:
-    st.session_state.et_te = 
+if "vector_store" not in st.session_state:
+    st.session_state.vector_store = None
 
-uploaded_file = st.file_uploader("Upload PF Dment", type="pdf")
+uploaded_file = st.file_uploader("Upload Legal Agreement (PDF)", type="pdf")
 
 if uploaded_file and st.button("Analyze Document"):
-    with st.spinner("cing document.."):
-        text = get_pdf_text(uploaded_file)
-        if text:
-            t.sessin_satecuent_texttext
-            st.sessont roessedes)
-            st.("Document nex ccesll")
-       else:
-            st.error("Unable to redocument.  nsure it is a ad .")
+    if not api_key:
+        st.markdown('<div class="error-box">⚠️ Please provide an API Key.</div>', unsafe_allow_html=True)
+    else:
+        with st.spinner("Indexing..."):
+            text = get_pdf_text(uploaded_file)
+            if text:
+                splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
+                chunks = splitter.split_text(text)
+                embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+                st.session_state.vector_store = FAISS.from_texts(chunks, embedding=embeddings)
+                st.markdown('<div class="success-box">✅ Document Indexed.</div>', unsafe_allow_html=True)
 
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("Ask about the document..."):
+if prompt := st.chat_input("Ask a legal question..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
-    with st.cat_message("user"):
-       st.markown(prompt)
-    
-    if st.session_state.et_tet:
-        with s.spinner("nling..."):
-            response = et_sis(st.sesson_state.et_tet, prompt)
-            st.markdown(response)
-            st.session_state.messages.append({"role": "assistant", "content": response})
-    else:
-        st.warning("Please upload a document first.")
-
-s.markdown('<div class="disclaimer">This is a si doent ntt proesoa g advce  alsi ae cous.</div>', unsafe_allow_html=True)
+    with st.chat_message("user"):
+        st.markdown(prompt)
+    if st.session_state.vector_store:
+        response = get_legal_response(st.session_state.vector_store, prompt, api_key)
+        st.markdown(response)
+        st.session_state.messages.append({"role": "assistant", "content": response})
