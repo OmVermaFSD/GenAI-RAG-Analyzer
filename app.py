@@ -89,7 +89,17 @@ def get_pdf_text(uploaded_file):
 def get_expert_response(vector_store, question, api_key):
     try:
         genai.configure(api_key=api_key)
-        llm = genai.GenerativeModel('gemini-pro')
+        # Try different model names that might be available
+        try:
+            llm = genai.GenerativeModel('models/gemini-1.0-pro')
+        except:
+            try:
+                llm = genai.GenerativeModel('gemini-1.0-pro')
+            except:
+                try:
+                    llm = genai.GenerativeModel('models/gemini-pro-latest')
+                except:
+                    llm = genai.GenerativeModel('gemini-pro-latest')
         
         template = """
         You are an Expert Strategy Consultant at Deloitte. Answer based ONLY on the Context below.
