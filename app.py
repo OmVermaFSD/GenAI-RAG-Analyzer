@@ -10,11 +10,38 @@ try:
     from langchain.chains import RetrievalQA
     from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 except ImportError:
-    # Fallback to old structure (v0.0.x)
-    from langchain_core.text_splitter import RecursiveCharacterTextSplitter
-    from langchain_community.vectorstores import FAISS
-    from langchain.chains import RetrievalQA
-    from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+    try:
+        # Try langchain_core structure
+        from langchain_core.text_splitter import RecursiveCharacterTextSplitter
+        from langchain_community.vectorstores import FAISS
+        from langchain.chains import RetrievalQA
+        from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+    except ImportError:
+        # Final fallback - try main langchain module
+        try:
+            from langchain.text_splitter import RecursiveCharacterTextSplitter
+            from langchain_community.vectorstores import FAISS
+            from langchain.chains import RetrievalQA
+            from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+        except ImportError:
+            # If all else fails, use basic imports without text_splitter
+            from langchain_community.vectorstores import FAISS
+            from langchain.chains import RetrievalQA
+            from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+            # Create a simple text splitter as fallback
+            class RecursiveCharacterTextSplitter:
+                def __init__(self, chunk_size=1000, chunk_overlap=100):
+                    self.chunk_size = chunk_size
+                    self.chunk_overlap = chunk_overlap
+                
+                def split_text(self, text):
+                    chunks = []
+                    start = 0
+                    while start < len(text):
+                        end = start + self.chunk_size
+                        chunks.append(text[start:end])
+                        start = end - self.chunk_overlap
+                    return chunks
 
 import PyPDF2
 from langchain.prompts import PromptTemplate
