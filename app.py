@@ -1,37 +1,11 @@
 import streamlit as st
 import os
 import PyPDF2
-import google.generativeai as genai
-
-# Simple text splitter
-def simple_text_splitter(text, chunk_size=1000, overlap=100):
-    chunks = []
-    start = 0
-    while start < len(text):
-        end = start + chunk_size
-        chunks.append(text[start:end])
-        start = end - overlap
-    return chunks
-
-# Simple vector store using Python lists (no FAISS needed)
-class SimpleVectorStore:
-    def __init__(self):
-        self.chunks = []
-        self.embeddings = []
-    
-    def add_texts(self, texts, embeddings):
-        self.chunks.extend(texts)
-        self.embeddings.extend(embeddings)
-    
-    def similarity_search(self, query, k=3):
-        # Simple keyword matching as fallback
-        results = []
-        for i, chunk in enumerate(self.chunks):
-            if any(word.lower() in chunk.lower() for word in query.split() if len(word) > 3):
-                results.append(chunk)
-                if len(results) >= k:
-                    break
-        return results[:k]
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain_community.vectorstores import FAISS
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
 
 st.set_page_config(page_title="GenAI RAG Analyst", page_icon="🤖", layout="wide")
 
@@ -53,21 +27,23 @@ def get_pdf_text(uploaded_file):
         return None
     return text
 
-def list_models(api_key):
+def create_vector_store(text_chunks, api_key):
     try:
-        genai.configure(api_key=api_key)
-        for m in genai.list_models():
-            print(f"Model Name: {m.name}, Supported Methods: {m.supported_generation_methods}")
+        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+        vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
+        return vector_store
     except Exception as e:
-        print(f"Error listing models: {str(e)}")
+        if "429" in str(e):
+            st.error("⚠️ Free Tier Limit Hit. Please wait 30s and try again.")
+        return None
 
-def get_expert_response(context, question, api_key):
+def get_expert_response(vector_store, question, api_key):
     try:
-        genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('models/gemini-pro')
+        llm = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.3, google_api_key=api_key)
         
-        prompt = f"""
-        You are an Expert Strategy Consultant. Answer based ONLY on the Context below.
+        template = """
+        You are an Expert Strategy Consultant at Deloitte. Answer based ONLY on the Context below.
+        Use professional business language and bullet points.
         
         Context: {context}
         
@@ -75,11 +51,31 @@ def get_expert_response(context, question, api_key):
         
         Answer:
         """
+        prompt = PromptTemplate(template=template, input_variables=["context", "question"])
         
-        response = model.generate_content(prompt)
-        return response.text
+        chain = RetrievalQA.from_chain_type(
+            llm=llm, 
+            chain_type="stuff", 
+            retriever=vector_store.as_retriever(),
+            chain_type_kwargs={"prompt": prompt},
+            return_source_documents=True
+        )
+        
+        result = chain({"query": question})
+        return result["result"]
+        
     except Exception as e:
-        return f"Error: {str(e)}"
+        # Fallback to direct LLM if RAG fails
+        try:
+            llm = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.3, google_api_key=api_key)
+            prompt = f"""
+            You are an Expert Strategy Consultant at Deloitte. 
+            Answer this question about a document: {question}
+            """
+            response = llm.invoke(prompt)
+            return response.content
+        except Exception as e2:
+            return f"Error: {str(e2)}"
 
 # Sidebar
 with st.sidebar:
@@ -87,13 +83,9 @@ with st.sidebar:
     if "GOOGLE_API_KEY" in st.secrets:
         api_key = st.secrets["GOOGLE_API_KEY"]
         st.markdown('<span class="status-ok">✅ API Key Loaded</span>', unsafe_allow_html=True)
-        # List available models for debugging
-        list_models(api_key)
     elif os.getenv("GOOGLE_API_KEY"):
         api_key = os.getenv("GOOGLE_API_KEY")
         st.markdown('<span class="status-ok">✅ API Key Loaded</span>', unsafe_allow_html=True)
-        # List available models for debugging
-        list_models(api_key)
     else:
         api_key = st.text_input("Enter Gemini API Key", type="password")
         if not api_key: st.markdown('<span class="status-err">🔴 Waiting for Key</span>', unsafe_allow_html=True)
@@ -102,7 +94,7 @@ with st.sidebar:
 st.markdown('<div class="main-header">GenAI Document Analyst</div>', unsafe_allow_html=True)
 
 if "messages" not in st.session_state: st.session_state.messages = []
-if "document_text" not in st.session_state: st.session_state.document_text = ""
+if "vector_store" not in st.session_state: st.session_state.vector_store = None
 
 uploaded_file = st.file_uploader("Upload PDF Report", type="pdf")
 
@@ -113,23 +105,29 @@ if uploaded_file and st.button("🚀 Process Document"):
         with st.spinner("Processing..."):
             raw_text = get_pdf_text(uploaded_file)
             if raw_text:
-                st.session_state.document_text = raw_text
-                st.success("✅ Analysis Ready!")
+                chunks = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200).split_text(raw_text)
+                vs = create_vector_store(chunks, api_key)
+                if vs:
+                    st.session_state.vector_store = vs
+                    st.success("✅ Analysis Ready!")
+                    st.info(f"📄 Document processed into {len(chunks)} chunks")
             else:
                 st.error("❌ Document Empty or Scanned.")
 
+# Chat History
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
 
-if prompt := st.chat_input("Ask a question..."):
+# Chat Input
+if prompt := st.chat_input("Ask about the document..."):
     st.session_state.messages.append({"role": "user", "content": prompt})
     with st.chat_message("user"): st.markdown(prompt)
     
     with st.chat_message("assistant"):
-        if st.session_state.document_text:
-            with st.spinner("Thinking..."):
-                response = get_expert_response(st.session_state.document_text, prompt, api_key)
+        if st.session_state.vector_store:
+            with st.spinner("Analyzing..."):
+                response = get_expert_response(st.session_state.vector_store, prompt, api_key)
                 st.markdown(response)
                 st.session_state.messages.append({"role": "assistant", "content": response})
         else:
