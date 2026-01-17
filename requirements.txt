@@ -1,9 +1,3 @@
 streamlit
-langchain
-langchain-community
-langchain-google-genai
-faiss-cpu
 pypdf2
-python-dotenv
-pdf2image
-pytesseract
+google-generativeai

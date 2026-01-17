@@ -1,59 +1,70 @@
 import streamlit as st
 import os
 import PyPDF2
+import google.generativeai as genai
 
-# Try different import paths for LangChain compatibility
-try:
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
-    from langchain_community.vectorstores import FAISS
-    from langchain.chains import RetrievalQA
-    from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-    from langchain.prompts import PromptTemplate
-except ImportError:
-    try:
-        from langchain.text_splitter import RecursiveCharacterTextSplitter
-        from langchain_community.vectorstores import FAISS
-        from langchain.chains import RetrievalQA
-        from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-        from langchain.prompts import PromptTemplate
-    except ImportError:
-        # If all else fails, use basic imports
-        from langchain_community.vectorstores import FAISS
-        from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-        from langchain.prompts import PromptTemplate
+# Custom RAG Implementation - No LangChain Dependencies
+class CustomTextSplitter:
+    def __init__(self, chunk_size=1000, chunk_overlap=200):
+        self.chunk_size = chunk_size
+        self.chunk_overlap = chunk_overlap
+    
+    def split_text(self, text):
+        chunks = []
+        start = 0
+        while start < len(text):
+            end = start + self.chunk_size
+            chunks.append(text[start:end])
+            start = end - self.chunk_overlap
+        return chunks
+
+class CustomVectorStore:
+    def __init__(self):
+        self.chunks = []
+        self.embeddings = []
+    
+    def add_texts(self, texts):
+        self.chunks.extend(texts)
+    
+    def similarity_search(self, query, k=3):
+        # Simple keyword matching as similarity
+        query_words = set(query.lower().split())
+        scored_chunks = []
         
-        # Create simple text splitter
-        class RecursiveCharacterTextSplitter:
-            def __init__(self, chunk_size=1000, chunk_overlap=200):
-                self.chunk_size = chunk_size
-                self.chunk_overlap = chunk_overlap
-            
-            def split_text(self, text):
-                chunks = []
-                start = 0
-                while start < len(text):
-                    end = start + self.chunk_size
-                    chunks.append(text[start:end])
-                    start = end - self.chunk_overlap
-                return chunks
+        for i, chunk in enumerate(self.chunks):
+            chunk_words = set(chunk.lower().split())
+            score = len(query_words.intersection(chunk_words))
+            if score > 0:
+                scored_chunks.append((score, i, chunk))
         
-        # Create simple RetrievalQA
-        class RetrievalQA:
-            @staticmethod
-            def from_chain_type(llm, chain_type, retriever, chain_type_kwargs, return_source_documents=False):
-                class SimpleQA:
-                    def __init__(self, llm, retriever, prompt):
-                        self.llm = llm
-                        self.retriever = retriever
-                        self.prompt = prompt
-                    
-                    def __call__(self, inputs):
-                        docs = self.retriever.get_relevant_documents(inputs["query"])
-                        context = "\n\n".join([doc.page_content for doc in docs])
-                        formatted_prompt = self.prompt.format(context=context, question=inputs["query"])
-                        response = self.llm.invoke(formatted_prompt)
-                        return {"result": response.content}
-                return SimpleQA(llm, retriever, chain_type_kwargs["prompt"])
+        # Sort by score and return top k
+        scored_chunks.sort(reverse=True, key=lambda x: x[0])
+        return [chunk for _, _, chunk in scored_chunks[:k]]
+
+class CustomPromptTemplate:
+    def __init__(self, template):
+        self.template = template
+    
+    def format(self, **kwargs):
+        return self.template.format(**kwargs)
+
+class CustomRAGChain:
+    def __init__(self, llm, vector_store, prompt):
+        self.llm = llm
+        self.vector_store = vector_store
+        self.prompt = prompt
+    
+    def invoke(self, query):
+        # Get relevant chunks
+        docs = self.vector_store.similarity_search(query, k=3)
+        context = "\n\n".join(docs)
+        
+        # Format prompt
+        formatted_prompt = self.prompt.format(context=context, question=query)
+        
+        # Get response
+        response = self.llm.generate_content(formatted_prompt)
+        return response.content
 
 st.set_page_config(page_title="GenAI RAG Analyst", page_icon="🤖", layout="wide")
 
@@ -75,19 +86,10 @@ def get_pdf_text(uploaded_file):
         return None
     return text
 
-def create_vector_store(text_chunks, api_key):
-    try:
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
-        vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
-        return vector_store
-    except Exception as e:
-        if "429" in str(e):
-            st.error("⚠️ Free Tier Limit Hit. Please wait 30s and try again.")
-        return None
-
 def get_expert_response(vector_store, question, api_key):
     try:
-        llm = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.3, google_api_key=api_key)
+        genai.configure(api_key=api_key)
+        llm = genai.GenerativeModel('gemini-pro')
         
         template = """
         You are an Expert Strategy Consultant at Deloitte. Answer based ONLY on the Context below.
@@ -99,31 +101,14 @@ def get_expert_response(vector_store, question, api_key):
         
         Answer:
         """
-        prompt = PromptTemplate(template=template, input_variables=["context", "question"])
         
-        chain = RetrievalQA.from_chain_type(
-            llm=llm, 
-            chain_type="stuff", 
-            retriever=vector_store.as_retriever(),
-            chain_type_kwargs={"prompt": prompt},
-            return_source_documents=True
-        )
+        prompt = CustomPromptTemplate(template)
+        chain = CustomRAGChain(llm, vector_store, prompt)
         
-        result = chain({"query": question})
-        return result["result"]
+        return chain.invoke(question)
         
     except Exception as e:
-        # Fallback to direct LLM if RAG fails
-        try:
-            llm = ChatGoogleGenerativeAI(model="gemini-pro", temperature=0.3, google_api_key=api_key)
-            prompt = f"""
-            You are an Expert Strategy Consultant at Deloitte. 
-            Answer this question about a document: {question}
-            """
-            response = llm.invoke(prompt)
-            return response.content
-        except Exception as e2:
-            return f"Error: {str(e2)}"
+        return f"Error: {str(e)}"
 
 # Sidebar
 with st.sidebar:
@@ -153,12 +138,20 @@ if uploaded_file and st.button("🚀 Process Document"):
         with st.spinner("Processing..."):
             raw_text = get_pdf_text(uploaded_file)
             if raw_text:
-                chunks = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200).split_text(raw_text)
-                vs = create_vector_store(chunks, api_key)
-                if vs:
-                    st.session_state.vector_store = vs
-                    st.success("✅ Analysis Ready!")
-                    st.info(f"📄 Document processed into {len(chunks)} chunks")
+                # Create vector store
+                vector_store = CustomVectorStore()
+                
+                # Split text
+                splitter = CustomTextSplitter(chunk_size=1000, chunk_overlap=200)
+                chunks = splitter.split_text(raw_text)
+                
+                # Add to vector store
+                vector_store.add_texts(chunks)
+                
+                # Store in session
+                st.session_state.vector_store = vector_store
+                st.success("✅ Analysis Ready!")
+                st.info(f"📄 Document processed into {len(chunks)} chunks")
             else:
                 st.error("❌ Document Empty or Scanned.")
 
