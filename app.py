@@ -1,11 +1,9 @@
 import streamlit as st
 import os
 import PyPDF2
-from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from langchain_community.vectorstores import FAISS
-from langchain.prompts import PromptTemplate
+import google.generativeai as genai
 
-# Simple text splitter - no imports needed
+# Simple text splitter
 def simple_text_splitter(text, chunk_size=1000, overlap=100):
     chunks = []
     start = 0
@@ -14,6 +12,26 @@ def simple_text_splitter(text, chunk_size=1000, overlap=100):
         chunks.append(text[start:end])
         start = end - overlap
     return chunks
+
+# Simple vector store using Python lists (no FAISS needed)
+class SimpleVectorStore:
+    def __init__(self):
+        self.chunks = []
+        self.embeddings = []
+    
+    def add_texts(self, texts, embeddings):
+        self.chunks.extend(texts)
+        self.embeddings.extend(embeddings)
+    
+    def similarity_search(self, query, k=3):
+        # Simple keyword matching as fallback
+        results = []
+        for i, chunk in enumerate(self.chunks):
+            if any(word.lower() in chunk.lower() for word in query.split() if len(word) > 3):
+                results.append(chunk)
+                if len(results) >= k:
+                    break
+        return results[:k]
 
 st.set_page_config(page_title="GenAI RAG Analyst", page_icon="🤖", layout="wide")
 
@@ -35,37 +53,25 @@ def get_pdf_text(uploaded_file):
         return None
     return text
 
-def create_vector_store(text_chunks, api_key):
+def get_expert_response(context, question, api_key):
     try:
-        embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
-        vector_store = FAISS.from_texts(text_chunks, embedding=embeddings)
-        return vector_store
+        genai.configure(api_key=api_key)
+        model = genai.GenerativeModel('gemini-pro')
+        
+        prompt = f"""
+        You are an Expert Strategy Consultant. Answer based ONLY on the Context below.
+        
+        Context: {context}
+        
+        Question: {question}
+        
+        Answer:
+        """
+        
+        response = model.generate_content(prompt)
+        return response.text
     except Exception as e:
-        if "429" in str(e):
-            st.error("⚠️ Free Tier Limit Hit. Please wait 30s and try again.")
-        return None
-
-def get_expert_response(vector_store, question, api_key):
-    llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.3, google_api_key=api_key)
-    
-    # Get relevant documents
-    docs = vector_store.similarity_search(question, k=3)
-    context = "\n\n".join([doc.page_content for doc in docs])
-    
-    template = """
-    You are an Expert Strategy Consultant. Answer based ONLY on the Context below.
-    
-    Context: {context}
-    
-    Question: {question}
-    
-    Answer:
-    """
-    prompt = PromptTemplate(template=template, input_variables=["context", "question"])
-    formatted_prompt = prompt.format(context=context, question=question)
-    
-    response = llm.invoke(formatted_prompt)
-    return response.content
+        return f"Error: {str(e)}"
 
 # Sidebar
 with st.sidebar:
@@ -84,7 +90,7 @@ with st.sidebar:
 st.markdown('<div class="main-header">GenAI Document Analyst</div>', unsafe_allow_html=True)
 
 if "messages" not in st.session_state: st.session_state.messages = []
-if "vector_store" not in st.session_state: st.session_state.vector_store = None
+if "document_text" not in st.session_state: st.session_state.document_text = ""
 
 uploaded_file = st.file_uploader("Upload PDF Report", type="pdf")
 
@@ -95,11 +101,8 @@ if uploaded_file and st.button("🚀 Process Document"):
         with st.spinner("Processing..."):
             raw_text = get_pdf_text(uploaded_file)
             if raw_text:
-                chunks = simple_text_splitter(raw_text)
-                vs = create_vector_store(chunks, api_key)
-                if vs:
-                    st.session_state.vector_store = vs
-                    st.success("✅ Analysis Ready!")
+                st.session_state.document_text = raw_text
+                st.success("✅ Analysis Ready!")
             else:
                 st.error("❌ Document Empty or Scanned.")
 
@@ -112,9 +115,9 @@ if prompt := st.chat_input("Ask a question..."):
     with st.chat_message("user"): st.markdown(prompt)
     
     with st.chat_message("assistant"):
-        if st.session_state.vector_store:
+        if st.session_state.document_text:
             with st.spinner("Thinking..."):
-                response = get_expert_response(st.session_state.vector_store, prompt, api_key)
+                response = get_expert_response(st.session_state.document_text, prompt, api_key)
                 st.markdown(response)
                 st.session_state.messages.append({"role": "assistant", "content": response})
         else:
