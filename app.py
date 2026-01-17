@@ -1,52 +1,20 @@
 import streamlit as st
 import os
-import time
-
-# --- 1. BULLETPROOF IMPORTS (Fixes ModuleNotFound) ---
-try:
-    # Try new LangChain structure first (v0.1+)
-    from langchain_text_splitters import RecursiveCharacterTextSplitter
-    from langchain_community.vectorstores import FAISS
-    from langchain.chains import RetrievalQA
-    from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-except ImportError:
-    try:
-        # Try langchain_core structure
-        from langchain_core.text_splitter import RecursiveCharacterTextSplitter
-        from langchain_community.vectorstores import FAISS
-        from langchain.chains import RetrievalQA
-        from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-    except ImportError:
-        # Final fallback - try main langchain module
-        try:
-            from langchain.text_splitter import RecursiveCharacterTextSplitter
-            from langchain_community.vectorstores import FAISS
-            from langchain.chains import RetrievalQA
-            from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-        except ImportError:
-            # If all else fails, use basic imports without text_splitter
-            from langchain_community.vectorstores import FAISS
-            from langchain.chains import RetrievalQA
-            from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-            # Create a simple text splitter as fallback
-            class RecursiveCharacterTextSplitter:
-                def __init__(self, chunk_size=1000, chunk_overlap=100):
-                    self.chunk_size = chunk_size
-                    self.chunk_overlap = chunk_overlap
-                
-                def split_text(self, text):
-                    chunks = []
-                    start = 0
-                    while start < len(text):
-                        end = start + self.chunk_size
-                        chunks.append(text[start:end])
-                        start = end - self.chunk_overlap
-                    return chunks
-
 import PyPDF2
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from langchain_community.vectorstores import FAISS
 from langchain.prompts import PromptTemplate
 
-# --- 2. CONFIGURATION ---
+# Simple text splitter - no imports needed
+def simple_text_splitter(text, chunk_size=1000, overlap=100):
+    chunks = []
+    start = 0
+    while start < len(text):
+        end = start + chunk_size
+        chunks.append(text[start:end])
+        start = end - overlap
+    return chunks
+
 st.set_page_config(page_title="GenAI RAG Analyst", page_icon="🤖", layout="wide")
 
 st.markdown("""
@@ -57,7 +25,6 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- 3. FUNCTIONS ---
 def get_pdf_text(uploaded_file):
     text = ""
     try:
@@ -80,20 +47,27 @@ def create_vector_store(text_chunks, api_key):
 
 def get_expert_response(vector_store, question, api_key):
     llm = ChatGoogleGenerativeAI(model="gemini-1.5-pro", temperature=0.3, google_api_key=api_key)
+    
+    # Get relevant documents
+    docs = vector_store.similarity_search(question, k=3)
+    context = "\n\n".join([doc.page_content for doc in docs])
+    
     template = """
     You are an Expert Strategy Consultant. Answer based ONLY on the Context below.
+    
     Context: {context}
+    
     Question: {question}
+    
     Answer:
     """
     prompt = PromptTemplate(template=template, input_variables=["context", "question"])
-    chain = RetrievalQA.from_chain_type(
-        llm=llm, chain_type="stuff", retriever=vector_store.as_retriever(),
-        chain_type_kwargs={"prompt": prompt}
-    )
-    return chain.run(question)
+    formatted_prompt = prompt.format(context=context, question=question)
+    
+    response = llm.invoke(formatted_prompt)
+    return response.content
 
-# --- 4. SIDEBAR & AUTH ---
+# Sidebar
 with st.sidebar:
     st.title("⚙️ Settings")
     if "GOOGLE_API_KEY" in st.secrets:
@@ -106,7 +80,7 @@ with st.sidebar:
         api_key = st.text_input("Enter Gemini API Key", type="password")
         if not api_key: st.markdown('<span class="status-err">🔴 Waiting for Key</span>', unsafe_allow_html=True)
 
-# --- 5. MAIN UI ---
+# Main UI
 st.markdown('<div class="main-header">GenAI Document Analyst</div>', unsafe_allow_html=True)
 
 if "messages" not in st.session_state: st.session_state.messages = []
@@ -121,7 +95,7 @@ if uploaded_file and st.button("🚀 Process Document"):
         with st.spinner("Processing..."):
             raw_text = get_pdf_text(uploaded_file)
             if raw_text:
-                chunks = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100).split_text(raw_text)
+                chunks = simple_text_splitter(raw_text)
                 vs = create_vector_store(chunks, api_key)
                 if vs:
                     st.session_state.vector_store = vs
