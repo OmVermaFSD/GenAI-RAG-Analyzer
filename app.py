@@ -56,7 +56,7 @@ def get_pdf_text(uploaded_file):
 def get_expert_response(context, question, api_key):
     try:
         genai.configure(api_key=api_key)
-        model = genai.GenerativeModel('gemini-pro')
+        model = genai.GenerativeModel('gemini-1.5-pro')
         
         prompt = f"""
         You are an Expert Strategy Consultant. Answer based ONLY on the Context below.
