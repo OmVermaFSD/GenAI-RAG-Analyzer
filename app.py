@@ -81,8 +81,9 @@ if uploaded_file and st.button("Analyze Document"):
             if text:
                 splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
                 chunks = splitter.split_text(text)
-                embeddings = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
-                st.session_state.vector_store = FAISS.from_texts(chunks, embeddings)
+                embedding_model = GoogleGenerativeAIEmbeddings(model="models/embedding-001", google_api_key=api_key)
+                embeddings = embedding_model.embed_documents(chunks)
+                st.session_state.vector_store = FAISS.from_embeddings(embeddings, chunks)
                 st.markdown('<div class="success-box">✅ Document Indexed.</div>', unsafe_allow_html=True)
 
 # --- CHAT INTERFACE ---
