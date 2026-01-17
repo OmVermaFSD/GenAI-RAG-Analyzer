@@ -19,16 +19,25 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGener
 from langchain.prompts import PromptTemplate
 import PyPDF2
 
-# Download NLTK data (only once)
-try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
+# Download NLTK data (only once) - FIXED VERSION
+import nltk
+import sys
+import os
 
-try:
-    nltk.data.find('corpora/stopwords')
-except LookupError:
-    nltk.download('stopwords')
+def download_nltk_data():
+    """Download NLTK data safely"""
+    try:
+        # Try to download punkt
+        nltk.download('punkt', quiet=True)
+        # Try to download stopwords
+        nltk.download('stopwords', quiet=True)
+        return True
+    except Exception as e:
+        st.error(f"NLTK download failed: {e}")
+        return False
+
+# Try to download NLTK data
+nltk_available = download_nltk_data()
 
 # --- UI STYLING ---
 st.markdown("""
@@ -68,9 +77,19 @@ def analyze_document_risk(text):
     return risk_indicators
 
 def generate_document_summary(text):
-    """Generate a comprehensive document summary"""
-    sentences = sent_tokenize(text)
-    word_count = len(word_tokenize(text))
+    """Generate a comprehensive document summary with NLTK fallback"""
+    try:
+        if nltk_available:
+            sentences = sent_tokenize(text)
+            word_count = len(word_tokenize(text))
+        else:
+            # Fallback: simple sentence and word counting
+            sentences = text.split('.')  # Simple split by period
+            word_count = len(text.split())
+    except Exception as e:
+        # Ultimate fallback
+        sentences = text.split('.')
+        word_count = len(text.split())
     
     # Extract key information
     entities = extract_legal_entities(text)
@@ -81,7 +100,7 @@ def generate_document_summary(text):
         'total_sentences': len(sentences),
         'entities': entities,
         'risk_indicators': risk_analysis,
-        'complexity_score': min(100, (word_count / 100) * 10 + len(risk_indicators) * 5)
+        'complexity_score': min(100, (word_count / 100) * 10 + len(risk_analysis) * 5)
     }
     
     return summary
