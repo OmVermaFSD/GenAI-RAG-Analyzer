@@ -86,20 +86,48 @@ def get_pdf_text(uploaded_file):
         return None
     return text
 
+def list_available_models(api_key):
+    try:
+        genai.configure(api_key=api_key)
+        models = genai.list_models()
+        available_models = []
+        for model in models:
+            if 'generateContent' in model.supported_generation_methods:
+                available_models.append(model.name)
+                print(f"Available model: {model.name}")
+        return available_models
+    except Exception as e:
+        print(f"Error listing models: {e}")
+        return []
+
 def get_expert_response(vector_store, question, api_key):
     try:
         genai.configure(api_key=api_key)
-        # Try different model names that might be available
-        try:
-            llm = genai.GenerativeModel('models/gemini-1.0-pro')
-        except:
-            try:
-                llm = genai.GenerativeModel('gemini-1.0-pro')
-            except:
+        
+        # First, try to list available models
+        available_models = list_available_models(api_key)
+        
+        # Try to find a suitable model
+        llm = None
+        for model_name in available_models:
+            if 'gemini' in model_name.lower() and 'pro' in model_name.lower():
                 try:
-                    llm = genai.GenerativeModel('models/gemini-pro-latest')
+                    llm = genai.GenerativeModel(model_name)
+                    print(f"Using model: {model_name}")
+                    break
                 except:
-                    llm = genai.GenerativeModel('gemini-pro-latest')
+                    continue
+        
+        # If no suitable model found, try the first available one
+        if not llm and available_models:
+            try:
+                llm = genai.GenerativeModel(available_models[0])
+                print(f"Using first available model: {available_models[0]}")
+            except:
+                pass
+        
+        if not llm:
+            return "Error: No suitable Gemini model found. Check your API key and model availability."
         
         template = """
         You are an Expert Strategy Consultant at Deloitte. Answer based ONLY on the Context below.
