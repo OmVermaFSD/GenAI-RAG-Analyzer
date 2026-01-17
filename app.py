@@ -7,7 +7,7 @@ st.set_page_config(page_title="Legal Insight AI", page_icon="⚖️", layout="wi
 # --- EXACT IMPORTS (Matched to locked requirements) ---
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_community.vectorstores import FAISS
-from langchain_community.chains import RetrievalQA
+from langchain.chains import RetrievalQA
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from langchain.prompts import PromptTemplate
 import PyPDF2
@@ -22,7 +22,7 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- LOGIC ---
+# --- CORE FUNCTIONS ---
 def get_pdf_text(uploaded_file):
     text = ""
     try:
@@ -49,7 +49,7 @@ def get_legal_response(vector_store, question, api_key):
     )
     return chain.run(question)
 
-# --- SIDEBAR & MAIN ---
+# --- SIDEBAR WITH API KEY ---
 with st.sidebar:
     st.header("🔐 Secure Access")
     if "GOOGLE_API_KEY" in st.secrets:
@@ -61,6 +61,7 @@ with st.sidebar:
     else:
         api_key = st.text_input("Enter API Key", type="password")
 
+# --- MAIN UI ---
 st.markdown('<div class="main-header">Legal Insight AI ⚖️</div>', unsafe_allow_html=True)
 st.markdown('<div class="sub-header">Automated Contract Review & Risk Analysis System</div>', unsafe_allow_html=True)
 
@@ -84,6 +85,7 @@ if uploaded_file and st.button("Analyze Document"):
                 st.session_state.vector_store = FAISS.from_texts(chunks, embedding=embeddings)
                 st.markdown('<div class="success-box">✅ Document Indexed.</div>', unsafe_allow_html=True)
 
+# --- CHAT INTERFACE ---
 for msg in st.session_state.messages:
     with st.chat_message(msg["role"]):
         st.markdown(msg["content"])
