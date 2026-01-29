@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  doc-manager:
+    build: ./doc-manager
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - ocr-engine
+    environment:
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/documiner
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=password
+      - OCR_ENGINE_URL=http://ocr-engine:5000
+    networks:
+      - documiner-net
+
+  ocr-engine:
+    build: ./ocr-engine
+    ports:
+      - "5000:5000"
+    networks:
+      - documiner-net
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=documiner
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    networks:
+      - documiner-net
+
+networks:
+  documiner-net:
+    driver: bridge
+
+volumes:
+  postgres-data:
