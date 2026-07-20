@@ -1,0 +1,18 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual Environments
+venv/
+.venv/
+env/
+
+# Vector DB Store & Local Storage
+chroma_db_store/
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
