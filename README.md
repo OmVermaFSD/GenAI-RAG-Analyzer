@@ -7,6 +7,12 @@
 [![Ollama](https://img.shields.io/badge/Ollama-Llama3%20%7C%20Mistral%20%7C%20DeepSeek-black.svg)](https://ollama.com/)
 [![Docker](https://img.shields.io/badge/Docker-Ready-2496ED.svg)](https://www.docker.com/)
 
+### Project Status
+- ✅ **Production Ready**
+- ✅ **Resume Aligned**
+- ✅ **Docker Supported**
+- ✅ **Unit Tested**
+
 **DocuMind AI – RAG Knowledge Retrieval Platform** is an enterprise-ready Retrieval-Augmented Generation (RAG) backend constructed with **Python**, **FastAPI**, **LangChain**, **ChromaDB**, **HuggingFace Embeddings**, **Ollama**, **SQLite**, and **JWT Authentication**.
 
 The system enables secure PDF document ingestion, recursive text chunking, persistent vector similarity retrieval (cosine distance), and context-aware LLM answer synthesis across multiple local LLMs.
@@ -356,4 +362,20 @@ pytest tests/ -v
 - **Hybrid Search**: Integrate BM25 Keyword Search alongside Cosine Vector Similarity (Hybrid Retrieval).
 - **Asynchronous Ingestion**: Offload PDF processing tasks to Celery / Redis background task queues for large files.
 - **RAG Evaluation**: Implement Ragas / TruLens evaluation benchmarks to score answer faithfulness and relevance.
+
+---
+
+## 📌 Versioning
+Current Release: **`v1.0.0`**
+
+---
+
+## 🤝 Contributing
+Contributions, issues, and feature requests are welcome! Please review [CONTRIBUTING.md](CONTRIBUTING.md) for contribution guidelines and branch naming standards.
+
+---
+
+## 📜 License
+Distributed under the MIT License. See [LICENSE](LICENSE) for details.
+
 
