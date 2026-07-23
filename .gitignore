@@ -7,9 +7,23 @@ __pycache__/
 venv/
 .venv/
 env/
+ENV/
 
-# Vector DB Store & Local Storage
+# Environment Variables & Secrets
+.env
+*.env
+
+# Local Storage, Vector DB, SQLite & Uploads
+data/
 chroma_db_store/
+*.db
+*.sqlite
+*.sqlite3
+
+# Testing & Coverage
+.pytest_cache/
+.coverage
+htmlcov/
 
 # IDE & OS files
 .vscode/
